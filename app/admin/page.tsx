@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 export default function AdminPage() {
@@ -40,6 +40,17 @@ export default function AdminPage() {
     setReplies(repliesData || []);
     setError("");
   }
+
+  useEffect(() => {
+    if (!loggedIn) return;
+
+    const timer = setInterval(() => {
+      loadMessages();
+    }, 10000);
+
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loggedIn]);
 
   async function sendReply(messageId: string) {
     const content = (replyDrafts[messageId] || "").trim();
