@@ -13,7 +13,7 @@ export default function Home() {
   const [loadingReplies, setLoadingReplies] = useState(false);
 
   async function loadReplies(id: string, silent = false) {
-  if (!silent) setLoadingReplies(true);
+    if (!silent) setLoadingReplies(true);
     setLoadingReplies(true);
 
     const { data: messagesData, error: messagesError } =
@@ -52,7 +52,6 @@ export default function Home() {
 
     setLoadingReplies(false);
   }
-
   useEffect(() => {
     async function prepareUser() {
       const { data } = await supabase.auth.getSession();
@@ -66,7 +65,7 @@ export default function Home() {
       const { data: result, error } =
         await supabase.auth.signInAnonymously();
 
-      if (error) {
+      if (error || !result.user) {
         setStatus("تعذر الاتصال. حاول مرة أخرى.");
         return;
       }
