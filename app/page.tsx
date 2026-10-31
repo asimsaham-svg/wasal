@@ -13,8 +13,9 @@ export default function Home() {
   const [loadingReplies, setLoadingReplies] = useState(false);
 
   async function loadReplies(id: string, silent = false) {
-    if (!silent) setLoadingReplies(true);
-    setLoadingReplies(true);
+    if (!silent) {
+      setLoadingReplies(true);
+    }
 
     const { data: messagesData, error: messagesError } =
       await supabase
@@ -24,7 +25,9 @@ export default function Home() {
         .order("created_at", { ascending: false });
 
     if (messagesError) {
-      if (!silent) setLoadingReplies(false);
+      if (!silent) {
+        setLoadingReplies(false);
+      }
       return;
     }
 
@@ -33,7 +36,9 @@ export default function Home() {
 
     if (ownMessages.length === 0) {
       setReplies([]);
-      setLoadingReplies(false);
+      if (!silent) {
+        setLoadingReplies(false);
+      }
       return;
     }
 
@@ -50,28 +55,45 @@ export default function Home() {
       setReplies(repliesData || []);
     }
 
-    setLoadingReplies(false);
+    if (!silent) {
+      setLoadingReplies(false);
+    }
   }
+
   useEffect(() => {
     async function prepareUser() {
-      const { data } = await supabase.auth.getSession();
+      const { data, error: sessionError } =
+        await supabase.auth.getSession();
+
+      if (sessionError) {
+        setStatus("تعذر الاتصال. حاول مرة أخرى.");
+        return;
+      }
 
       if (data.session?.user) {
-        setUserId(data.session.user.id);
-        await loadReplies(data.session.user.id);
+        const currentUserId = data.session.user.id;
+        setUserId(currentUserId);
+        await loadReplies(currentUserId);
         return;
       }
 
       const { data: result, error } =
         await supabase.auth.signInAnonymously();
 
-      if (error || !result.user) {
+      if (error) {
         setStatus("تعذر الاتصال. حاول مرة أخرى.");
         return;
       }
 
-      setUserId(result.user.id);
-      await loadReplies(result.user.id);
+      const user = result?.user;
+
+      if (!user) {
+        setStatus("تعذر الاتصال. حاول مرة أخرى.");
+        return;
+      }
+
+      setUserId(user.id);
+      await loadReplies(user.id);
     }
 
     prepareUser();
@@ -86,7 +108,6 @@ export default function Home() {
 
     return () => clearInterval(timer);
   }, [userId]);
-  
 
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
