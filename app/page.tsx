@@ -5,12 +5,18 @@ import { supabase } from "@/lib/supabase";
 
 export default function Home() {
   const [userId, setUserId] = useState("");
+  const [senderName, setSenderName] = useState("");
   const [message, setMessage] = useState("");
   const [status, setStatus] = useState("");
   const [sending, setSending] = useState(false);
   const [myMessages, setMyMessages] = useState<any[]>([]);
   const [replies, setReplies] = useState<any[]>([]);
   const [loadingReplies, setLoadingReplies] = useState(false);
+
+  useEffect(() => {
+    const savedName = localStorage.getItem("wasal_sender_name");
+    if (savedName) setSenderName(savedName);
+  }, []);
 
   async function loadReplies(id: string, silent = false) {
     if (!silent) {
@@ -112,13 +118,14 @@ export default function Home() {
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!message.trim() || !userId) return;
+    if (!senderName.trim() || !message.trim() || !userId) return;
 
     setSending(true);
     setStatus("");
 
     const { error } = await supabase.from("messages").insert({
       sender_id: userId,
+      sender_name: senderName.trim(),
       content: message.trim(),
     });
 
@@ -168,6 +175,19 @@ export default function Home() {
           <h3 className="mb-4 text-lg font-bold">📩 أرسل رسالة</h3>
 
           <form onSubmit={sendMessage}>
+            <input
+              type="text"
+              value={senderName}
+              onChange={(e) => {
+                setSenderName(e.target.value);
+                localStorage.setItem("wasal_sender_name", e.target.value);
+              }}
+              placeholder="اكتب اسمك المستعار..."
+              maxLength={40}
+              required
+              className="mb-4 w-full rounded-xl border border-slate-700 bg-slate-800 p-4 text-white outline-none focus:border-cyan-400"
+            />
+
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
@@ -179,7 +199,7 @@ export default function Home() {
 
             <button
               type="submit"
-              disabled={sending || !userId || !message.trim()}
+              disabled={sending || !userId || !senderName.trim() || !message.trim()}
               className="mt-4 w-full rounded-xl bg-cyan-500 p-4 font-bold text-slate-950 disabled:opacity-50"
             >
               {sending ? "جارٍ الإرسال..." : "إرسال الرسالة"}

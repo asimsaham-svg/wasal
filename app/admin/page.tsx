@@ -223,7 +223,7 @@ export default function AdminPage() {
                     className="rounded-2xl border border-slate-800 bg-slate-900 p-5"
                   >
                     <p className="mb-3 text-sm text-cyan-400">
-                      متابع {msg.sender_id.slice(0, 8)}
+                      {msg.sender_name?.trim() || `متابع ${msg.sender_id.slice(0, 8)}`}
                     </p>
 
                     <p className="whitespace-pre-wrap leading-7">
