@@ -6,6 +6,8 @@ import { supabase } from "@/lib/supabase";
 export default function Home() {
   const [userId, setUserId] = useState("");
   const [senderName, setSenderName] = useState("");
+  const [nameLocked, setNameLocked] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [status, setStatus] = useState("");
   const [sending, setSending] = useState(false);
@@ -13,15 +15,8 @@ export default function Home() {
   const [replies, setReplies] = useState<any[]>([]);
   const [loadingReplies, setLoadingReplies] = useState(false);
 
-  useEffect(() => {
-    const savedName = localStorage.getItem("wasal_sender_name");
-    if (savedName) setSenderName(savedName);
-  }, []);
-
   async function loadReplies(id: string, silent = false) {
-    if (!silent) {
-      setLoadingReplies(true);
-    }
+    if (!silent) setLoadingReplies(true);
 
     const { data: messagesData, error: messagesError } =
       await supabase
@@ -31,9 +26,7 @@ export default function Home() {
         .order("created_at", { ascending: false });
 
     if (messagesError) {
-      if (!silent) {
-        setLoadingReplies(false);
-      }
+      if (!silent) setLoadingReplies(false);
       return;
     }
 
@@ -42,9 +35,7 @@ export default function Home() {
 
     if (ownMessages.length === 0) {
       setReplies([]);
-      if (!silent) {
-        setLoadingReplies(false);
-      }
+      if (!silent) setLoadingReplies(false);
       return;
     }
 
@@ -57,51 +48,70 @@ export default function Home() {
         .in("message_id", messageIds)
         .order("created_at", { ascending: true });
 
-    if (!repliesError) {
-      setReplies(repliesData || []);
-    }
+    if (!repliesError) setReplies(repliesData || []);
 
-    if (!silent) {
-      setLoadingReplies(false);
-    }
+    if (!silent) setLoadingReplies(false);
   }
 
-  useEffect(() => {
-    async function prepareUser() {
-      const { data, error: sessionError } =
-        await supabase.auth.getSession();
+  async function prepareUser() {
+    const { data, error: sessionError } =
+      await supabase.auth.getSession();
 
-      if (sessionError) {
-        setStatus("تعذر الاتصال. حاول مرة أخرى.");
-        return;
-      }
+    if (sessionError) {
+      setStatus("تعذر الاتصال. حاول مرة أخرى.");
+      setProfileLoading(false);
+      return;
+    }
 
-      if (data.session?.user) {
-        const currentUserId = data.session.user.id;
-        setUserId(currentUserId);
-        await loadReplies(currentUserId);
-        return;
-      }
+    let currentUser = data.session?.user;
 
+    if (!currentUser) {
       const { data: result, error } =
         await supabase.auth.signInAnonymously();
 
-      if (error) {
+      if (error || !result?.user) {
         setStatus("تعذر الاتصال. حاول مرة أخرى.");
+        setProfileLoading(false);
         return;
       }
 
-      const user = result?.user;
-
-      if (!user) {
-        setStatus("تعذر الاتصال. حاول مرة أخرى.");
-        return;
-      }
-
-      setUserId(user.id);
-      await loadReplies(user.id);
+      currentUser = result.user;
     }
 
+    const currentUserId = currentUser.id;
+
+    const { data: profile, error: profileError } =
+      await supabase
+        .from("sender_profiles")
+        .select("sender_name")
+        .eq("user_id", currentUserId)
+        .maybeSingle();
+
+    if (profileError) {
+      setStatus("تعذر تحميل الاسم. حاول تحديث الصفحة.");
+      setProfileLoading(false);
+      return;
+    }
+
+    if (profile?.sender_name) {
+      setSenderName(profile.sender_name);
+      setNameLocked(true);
+      localStorage.setItem(
+        "wasal_sender_name",
+        profile.sender_name
+      );
+    } else {
+      const savedName = localStorage.getItem("wasal_sender_name");
+      if (savedName) setSenderName(savedName);
+      setNameLocked(false);
+    }
+
+    setUserId(currentUserId);
+    await loadReplies(currentUserId);
+    setProfileLoading(false);
+  }
+
+  useEffect(() => {
     prepareUser();
   }, []);
 
@@ -123,9 +133,48 @@ export default function Home() {
     setSending(true);
     setStatus("");
 
+    let finalName = senderName.trim();
+
+    if (!nameLocked) {
+      const { data: newProfile, error: profileInsertError } =
+        await supabase
+          .from("sender_profiles")
+          .insert({
+            user_id: userId,
+            sender_name: finalName,
+          })
+          .select("sender_name")
+          .single();
+
+      if (newProfile?.sender_name) {
+        finalName = newProfile.sender_name;
+        setSenderName(finalName);
+        setNameLocked(true);
+        localStorage.setItem("wasal_sender_name", finalName);
+      } else {
+        const { data: existingProfile, error: fetchError } =
+          await supabase
+            .from("sender_profiles")
+            .select("sender_name")
+            .eq("user_id", userId)
+            .maybeSingle();
+
+        if (fetchError || !existingProfile?.sender_name) {
+          setStatus("تعذر تثبيت الاسم. حاول مرة أخرى.");
+          setSending(false);
+          return;
+        }
+
+        finalName = existingProfile.sender_name;
+        setSenderName(finalName);
+        setNameLocked(true);
+        localStorage.setItem("wasal_sender_name", finalName);
+      }
+    }
+
     const { error } = await supabase.from("messages").insert({
       sender_id: userId,
-      sender_name: senderName.trim(),
+      sender_name: finalName,
       content: message.trim(),
     });
 
@@ -180,12 +229,20 @@ export default function Home() {
               value={senderName}
               onChange={(e) => {
                 setSenderName(e.target.value);
-                localStorage.setItem("wasal_sender_name", e.target.value);
+                localStorage.setItem(
+                  "wasal_sender_name",
+                  e.target.value
+                );
               }}
-              placeholder="اكتب اسمك المستعار..."
+              placeholder={
+                nameLocked
+                  ? "اسمك المستعار ثابت"
+                  : "اكتب اسمك المستعار..."
+              }
               maxLength={40}
               required
-              className="mb-4 w-full rounded-xl border border-slate-700 bg-slate-800 p-4 text-white outline-none focus:border-cyan-400"
+              disabled={nameLocked || profileLoading}
+              className="mb-4 w-full rounded-xl border border-slate-700 bg-slate-800 p-4 text-white outline-none focus:border-cyan-400 disabled:opacity-70"
             />
 
             <textarea
@@ -199,7 +256,13 @@ export default function Home() {
 
             <button
               type="submit"
-              disabled={sending || !userId || !senderName.trim() || !message.trim()}
+              disabled={
+                sending ||
+                profileLoading ||
+                !userId ||
+                !senderName.trim() ||
+                !message.trim()
+              }
               className="mt-4 w-full rounded-xl bg-cyan-500 p-4 font-bold text-slate-950 disabled:opacity-50"
             >
               {sending ? "جارٍ الإرسال..." : "إرسال الرسالة"}
